@@ -7,6 +7,8 @@
 
   let hourlyRate = null;
   let isActive = true;
+  let usdRate = 90;
+  let eurRate = 100;
   let stats = { count: 0, max: 0 };
 
   // =====================================================
@@ -18,29 +20,60 @@
   }
 
   // =====================================================
-  // Price patterns — applied to normalized text
-  // Group 1 = the numeric part
+  // Price pattern groups — each group has a currency
+  // and list of patterns with group 1 = numeric part
   // =====================================================
-  const PRICE_PATTERNS = [
-    // "1 234 ₽", "1234₽", "1 234,50 ₽"
-    /(\d[\d .,]*\d)\s*₽/g,
-    // single digit "5 ₽", "0₽"
-    /(\d)\s*₽/g,
-    // "1 234 руб", "1234 руб."
-    /(\d[\d .,]*\d)\s*руб\.?/gi,
-    /(\d)\s*руб\.?/gi,
-    // "1 234 р.", "1234 р" — word boundary to avoid matching inside words
-    /(\d[\d .,]*\d)\s*р\b\.?/g,
-    /(\d)\s*р\b\.?/g,
-    // "1 234 рублей/рубля/рубль"
-    /(\d[\d .,]*\d)\s*рубл[а-яё]*/gi,
-    /(\d)\s*рубл[а-яё]*/gi,
+  const PRICE_PATTERN_GROUPS = [
+    {
+      currency: 'RUB',
+      patterns: [
+        /(\d[\d .,]*\d)\s*₽/g,
+        /(\d)\s*₽/g,
+        /(\d[\d .,]*\d)\s*руб\.?/gi,
+        /(\d)\s*руб\.?/gi,
+        /(\d[\d .,]*\d)\s*р\b\.?/g,
+        /(\d)\s*р\b\.?/g,
+        /(\d[\d .,]*\d)\s*рубл[а-яё]*/gi,
+        /(\d)\s*рубл[а-яё]*/gi,
+      ],
+    },
+    {
+      currency: 'USD',
+      patterns: [
+        /\$\s*(\d[\d .,]*\d)/g,
+        /\$\s*(\d)/g,
+        /(\d[\d .,]*\d)\s*\$/g,
+        /(\d)\s*\$/g,
+        /(\d[\d .,]*\d)\s*USD/gi,
+        /(\d)\s*USD/gi,
+      ],
+    },
+    {
+      currency: 'EUR',
+      patterns: [
+        /€\s*(\d[\d .,]*\d)/g,
+        /€\s*(\d)/g,
+        /(\d[\d .,]*\d)\s*€/g,
+        /(\d)\s*€/g,
+        /(\d[\d .,]*\d)\s*EUR/gi,
+        /(\d)\s*EUR/gi,
+      ],
+    },
   ];
 
-  // Check if a string looks like it contains a ruble price
+  // Flat list of all patterns for convenience
+  const ALL_PATTERNS = PRICE_PATTERN_GROUPS.flatMap((g) => g.patterns);
+
+  function convertToRubles(price, currency) {
+    if (currency === 'USD') return price * usdRate;
+    if (currency === 'EUR') return price * eurRate;
+    return price;
+  }
+
+  // Check if a string looks like it contains any price
   function containsPrice(text) {
     const t = norm(text);
-    for (const p of PRICE_PATTERNS) {
+    for (const p of ALL_PATTERNS) {
       p.lastIndex = 0;
       if (p.test(t)) return true;
     }
@@ -92,25 +125,16 @@
     return `${(months / 12).toFixed(1)} лет`;
   }
 
-  function getEmoji(hours) {
-    if (hours < 0.5) return '⚡';
-    if (hours < 2) return '☕';
-    if (hours < 8) return '⏱';
-    if (hours < 24) return '📅';
-    if (hours < 176) return '📆';
-    return '🗓';
-  }
-
   // =====================================================
   // Create the badge element
   // =====================================================
-  function makeBadge(originalText, price) {
-    const hours = price / hourlyRate;
+  function makeBadge(originalText, priceInRubles) {
+    const hours = priceInRubles / hourlyRate;
     const span = document.createElement('span');
     span.className = WRAPPER_CLASS;
     span.setAttribute(ORIGINAL_ATTR, originalText);
     span.setAttribute('title', `${originalText} → ${formatHours(hours)} работы`);
-    span.textContent = `${getEmoji(hours)} ${formatHours(hours)}`;
+    span.textContent = `⏱ ${formatHours(hours)}`;
     stats.count++;
     if (hours > stats.max) stats.max = hours;
     return span;
@@ -135,19 +159,17 @@
 
   // =====================================================
   // STRATEGY 1: Element-level replacement
-  // Finds the deepest element whose full textContent
-  // is essentially a price (handles split DOM like
-  // <span>1 234</span><span>₽</span>)
   // =====================================================
   function isPurePrice(text) {
     const t = norm(text);
     if (t.length > 60) return false;
-    // Strip everything that could be part of a price display
     const stripped = t
-      .replace(/[\d\s.,₽%\-–—]/g, '')
+      .replace(/[\d\s.,₽$€%\-–—]/g, '')
       .replace(/руб\.?/gi, '')
       .replace(/рубл[а-яё]*/gi, '')
       .replace(/\bр\b\.?/g, '')
+      .replace(/\bUSD\b/gi, '')
+      .replace(/\bEUR\b/gi, '')
       .replace(/от|до|за|шт|цена|price|стоимость/gi, '')
       .replace(/старая|новая|скидка|sale/gi, '')
       .trim();
@@ -168,7 +190,6 @@
 
       if (!containsPrice(normalized)) continue;
 
-      // Must be a "leaf" for prices — no child element also containing a price
       let childHasPrice = false;
       for (const child of el.children) {
         if (child.classList && child.classList.contains(WRAPPER_CLASS)) continue;
@@ -179,7 +200,6 @@
       }
       if (childHasPrice) continue;
 
-      // Must be mostly a price string
       if (!isPurePrice(normalized)) continue;
 
       results.push(el);
@@ -191,18 +211,21 @@
   function processElement(el) {
     const originalText = norm(el.textContent);
 
-    for (const pattern of PRICE_PATTERNS) {
-      const regex = new RegExp(pattern.source, pattern.flags);
-      const m = regex.exec(originalText);
-      if (m) {
-        const price = parsePrice(m[1]);
-        if (!isNaN(price) && price > 0) {
-          const badge = makeBadge(originalText, price);
-          el.setAttribute(ORIGINAL_ATTR, el.innerHTML);
-          el.setAttribute(SCANNED_ATTR, '1');
-          el.innerHTML = '';
-          el.appendChild(badge);
-          return;
+    for (const group of PRICE_PATTERN_GROUPS) {
+      for (const pattern of group.patterns) {
+        const regex = new RegExp(pattern.source, pattern.flags);
+        const m = regex.exec(originalText);
+        if (m) {
+          const price = parsePrice(m[1]);
+          if (!isNaN(price) && price > 0) {
+            const priceInRubles = convertToRubles(price, group.currency);
+            const badge = makeBadge(originalText, priceInRubles);
+            el.setAttribute(ORIGINAL_ATTR, el.innerHTML);
+            el.setAttribute(SCANNED_ATTR, '1');
+            el.innerHTML = '';
+            el.appendChild(badge);
+            return;
+          }
         }
       }
     }
@@ -212,7 +235,6 @@
 
   // =====================================================
   // STRATEGY 2: Text-node level replacement
-  // For prices that live inline in a text paragraph
   // =====================================================
   function processTextNodes() {
     const walker = document.createTreeWalker(
@@ -247,16 +269,19 @@
     if (!containsPrice(text)) return;
 
     const allMatches = [];
-    for (const pattern of PRICE_PATTERNS) {
-      const regex = new RegExp(pattern.source, pattern.flags);
-      let m;
-      while ((m = regex.exec(text)) !== null) {
-        allMatches.push({
-          start: m.index,
-          end: m.index + m[0].length,
-          full: m[0],
-          priceStr: m[1],
-        });
+    for (const group of PRICE_PATTERN_GROUPS) {
+      for (const pattern of group.patterns) {
+        const regex = new RegExp(pattern.source, pattern.flags);
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+          allMatches.push({
+            start: m.index,
+            end: m.index + m[0].length,
+            full: m[0],
+            priceStr: m[1],
+            currency: group.currency,
+          });
+        }
       }
     }
     if (allMatches.length === 0) return;
@@ -282,7 +307,8 @@
       if (isNaN(price) || price <= 0) {
         fragment.appendChild(document.createTextNode(match.full));
       } else {
-        fragment.appendChild(makeBadge(match.full, price));
+        const priceInRubles = convertToRubles(price, match.currency);
+        fragment.appendChild(makeBadge(match.full, priceInRubles));
       }
       lastEnd = match.end;
     }
@@ -301,17 +327,13 @@
     if (!hourlyRate || hourlyRate <= 0 || !isActive) return;
     stats = { count: 0, max: 0 };
 
-    // Strategy 1: Element-level (handles split DOM prices like
-    // <span>1 234</span><span>₽</span>)
     const priceEls = findPriceElements();
     for (const el of priceEls) {
       try { processElement(el); } catch (e) { /* skip */ }
     }
 
-    // Strategy 2: Text-node level (handles inline prices in paragraphs)
     processTextNodes();
 
-    // Report stats
     try {
       chrome.runtime.sendMessage({
         action: 'stats',
@@ -327,7 +349,6 @@
   // RESTORE
   // =====================================================
   function restoreAll() {
-    // Restore element-level replacements
     document.querySelectorAll(`[${SCANNED_ATTR}]`).forEach((el) => {
       const html = el.getAttribute(ORIGINAL_ATTR);
       if (html !== null) {
@@ -337,7 +358,6 @@
       el.removeAttribute(SCANNED_ATTR);
     });
 
-    // Restore text-node level replacements
     document.querySelectorAll(`.${WRAPPER_CLASS}`).forEach((el) => {
       const original = el.getAttribute(ORIGINAL_ATTR);
       if (original) {
@@ -351,7 +371,6 @@
   // =====================================================
   let scanDebounce;
   const observer = new MutationObserver((mutations) => {
-    // Ignore mutations caused by our own DOM changes
     const dominated = mutations.every((m) => {
       if (m.type === 'attributes') {
         return m.attributeName === SCANNED_ATTR || m.attributeName === ORIGINAL_ATTR;
@@ -372,14 +391,14 @@
   // =====================================================
   // INIT
   // =====================================================
-  chrome.storage.sync.get(['hourlyRate', 'isActive'], (data) => {
+  chrome.storage.sync.get(['hourlyRate', 'isActive', 'usdRate', 'eurRate'], (data) => {
     hourlyRate = data.hourlyRate || null;
     isActive = data.isActive !== false;
+    usdRate = data.usdRate || 90;
+    eurRate = data.eurRate || 100;
 
     if (hourlyRate && isActive) {
-      // Wait for page to settle
       setTimeout(scanPage, 600);
-      // Second pass for lazy-loaded content
       setTimeout(scanPage, 2500);
     }
 
@@ -394,6 +413,8 @@
     if (msg.action === 'updateSettings') {
       hourlyRate = msg.hourlyRate;
       isActive = msg.isActive;
+      if (msg.usdRate) usdRate = msg.usdRate;
+      if (msg.eurRate) eurRate = msg.eurRate;
       restoreAll();
       if (isActive && hourlyRate > 0) {
         setTimeout(scanPage, 200);
@@ -405,6 +426,8 @@
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.hourlyRate) hourlyRate = changes.hourlyRate.newValue;
     if (changes.isActive) isActive = changes.isActive.newValue;
+    if (changes.usdRate) usdRate = changes.usdRate.newValue;
+    if (changes.eurRate) eurRate = changes.eurRate.newValue;
     restoreAll();
     if (isActive && hourlyRate > 0) {
       setTimeout(scanPage, 200);
