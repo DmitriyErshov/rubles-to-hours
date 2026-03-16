@@ -275,6 +275,7 @@
 
     .calc-row input {
       flex: 1;
+      min-width: 0;
       background: #12121a;
       border: 1.5px solid #2a2a35;
       border-radius: 8px;
@@ -356,9 +357,10 @@
     /* Footer */
     .footer {
       text-align: center;
-      font-size: 10px;
-      color: #3a3845;
+      font-size: 13px;
+      color: #8a8693;
       font-weight: 600;
+      margin-top: 4px;
     }
 
     /* Status toast */
@@ -403,7 +405,7 @@
       <div class="rate-label">Твоя ставка</div>
       <div class="rate-input-wrap">
         <div class="rate-input-box">
-          <input type="number" id="hourlyRate" placeholder="500" min="1">
+          <input type="number" id="hourlyRate" placeholder="500" min="1" value="500">
           <span class="currency">₽</span>
         </div>
         <span class="per-hour">/ час</span>
@@ -415,7 +417,7 @@
       <div class="calc-title">Рассчитать из зарплаты</div>
       <div class="calc-row">
         <label>Зарплата</label>
-        <input type="number" id="salaryInput" placeholder="80000" min="1">
+        <input type="number" id="salaryInput" placeholder="80000" min="1" value="80000">
         <span class="unit">₽</span>
       </div>
       <div class="calc-row">
@@ -450,7 +452,22 @@
       </div>
     </div>
 
-    <div class="footer">время — единственная валюта</div>
+    <!-- Exchange rates -->
+    <div class="calc-section" style="margin-bottom: 16px;">
+      <div class="calc-title">Курс валют</div>
+      <div class="calc-row">
+        <label>1 USD</label>
+        <input type="number" id="usdRate" value="90" min="1">
+        <span class="unit">₽</span>
+      </div>
+      <div class="calc-row">
+        <label>1 EUR</label>
+        <input type="number" id="eurRate" value="100" min="1">
+        <span class="unit">₽</span>
+      </div>
+    </div>
+
+    <div class="footer">⏱ время — единственная валюта</div>
   </div>
 
   <div class="toast" id="toast">Сохранено ✓</div>
