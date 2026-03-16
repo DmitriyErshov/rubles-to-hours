@@ -4,8 +4,6 @@ const salaryInput = document.getElementById('salaryInput');
 const hoursPerWeekInput = document.getElementById('hoursPerWeek');
 const activeToggle = document.getElementById('activeToggle');
 const calcRate = document.getElementById('calcRate');
-const pricesFound = document.getElementById('pricesFound');
-const maxPrice = document.getElementById('maxPrice');
 const toast = document.getElementById('toast');
 const modeBtns = document.querySelectorAll('.mode-btn');
 const manualSection = document.getElementById('manualSection');
@@ -17,7 +15,7 @@ let saveTimeout;
 
 // --- Load saved settings ---
 chrome.storage.sync.get(
-  ['hourlyRate', 'isActive', 'mode', 'salary', 'hoursPerWeek', 'usdRate', 'eurRate', 'stats'],
+  ['hourlyRate', 'isActive', 'mode', 'salary', 'hoursPerWeek', 'usdRate', 'eurRate'],
   (data) => {
     hourlyRateInput.value = data.hourlyRate || 500;
     salaryInput.value = data.salary || 80000;
@@ -28,11 +26,6 @@ chrome.storage.sync.get(
 
     const mode = data.mode || 'manual';
     setMode(mode);
-
-    if (data.stats) {
-      pricesFound.textContent = data.stats.count || '—';
-      maxPrice.textContent = data.stats.max ? data.stats.max.toFixed(1) : '—';
-    }
 
     updateCalcRate();
 
@@ -136,13 +129,3 @@ function showToast() {
 hourlyRateInput.addEventListener('input', save);
 activeToggle.addEventListener('change', save);
 
-// --- Listen for stats from content script ---
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === 'stats') {
-    pricesFound.textContent = msg.count || '—';
-    maxPrice.textContent = msg.max ? msg.max.toFixed(1) : '—';
-    chrome.storage.sync.set({
-      stats: { count: msg.count, max: msg.max },
-    });
-  }
-});
