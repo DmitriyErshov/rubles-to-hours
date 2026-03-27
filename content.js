@@ -12,11 +12,14 @@
   let stats = { count: 0, max: 0 };
 
   // =====================================================
-  // Normalize text: replace all whitespace variants with
-  // regular spaces for consistent matching
+  // Normalize text: strip invisible/zero-width chars,
+  // then replace all whitespace variants with regular spaces
   // =====================================================
   function norm(text) {
-    return text.replace(/[\s\u00A0\u2009\u202F\u2007\u200B]+/g, ' ').trim();
+    return text
+      .replace(/[\u00AD\u200B\u200C\u200D\u2060\uFEFF]+/g, '')
+      .replace(/[\s\u00A0\u2009\u202F\u2007]+/g, ' ')
+      .trim();
   }
 
   // =====================================================
@@ -84,7 +87,7 @@
   // Parse a Russian-format number string to float
   // =====================================================
   function parsePrice(priceStr) {
-    let s = priceStr.replace(/[\s\u00A0]+/g, '');
+    let s = priceStr.replace(/[^\d.,]/g, '');
     if (s.includes(',') && s.includes('.')) {
       s = s.replace(/\./g, '').replace(',', '.');
     } else if (s.includes(',')) {
