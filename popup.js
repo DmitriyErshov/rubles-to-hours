@@ -4,33 +4,35 @@ const salaryInput = document.getElementById('salaryInput');
 const hoursPerWeekInput = document.getElementById('hoursPerWeek');
 const activeToggle = document.getElementById('activeToggle');
 const calcRate = document.getElementById('calcRate');
-const pricesFound = document.getElementById('pricesFound');
-const maxPrice = document.getElementById('maxPrice');
 const toast = document.getElementById('toast');
 const modeBtns = document.querySelectorAll('.mode-btn');
 const manualSection = document.getElementById('manualSection');
 const salarySection = document.getElementById('salarySection');
+const usdRateInput = document.getElementById('usdRate');
+const eurRateInput = document.getElementById('eurRate');
 
 let saveTimeout;
 
 // --- Load saved settings ---
 chrome.storage.sync.get(
-  ['hourlyRate', 'isActive', 'mode', 'salary', 'hoursPerWeek', 'stats'],
+  ['hourlyRate', 'isActive', 'mode', 'salary', 'hoursPerWeek', 'usdRate', 'eurRate'],
   (data) => {
-    if (data.hourlyRate) hourlyRateInput.value = data.hourlyRate;
-    if (data.salary) salaryInput.value = data.salary;
+    hourlyRateInput.value = data.hourlyRate || 500;
+    salaryInput.value = data.salary || 80000;
     if (data.hoursPerWeek) hoursPerWeekInput.value = data.hoursPerWeek;
+    if (data.usdRate) usdRateInput.value = data.usdRate;
+    if (data.eurRate) eurRateInput.value = data.eurRate;
     activeToggle.checked = data.isActive !== false;
 
     const mode = data.mode || 'manual';
     setMode(mode);
 
-    if (data.stats) {
-      pricesFound.textContent = data.stats.count || '—';
-      maxPrice.textContent = data.stats.max ? data.stats.max.toFixed(1) : '—';
-    }
-
     updateCalcRate();
+
+    // If no saved settings yet, save defaults immediately
+    if (!data.hourlyRate && !data.salary) {
+      save();
+    }
   }
 );
 
@@ -72,6 +74,9 @@ hoursPerWeekInput.addEventListener('input', () => {
   save();
 });
 
+usdRateInput.addEventListener('input', save);
+eurRateInput.addEventListener('input', save);
+
 // --- Save and notify content script ---
 function getEffectiveRate() {
   const activeMode = document.querySelector('.mode-btn.active').dataset.mode;
@@ -86,6 +91,8 @@ function save() {
   saveTimeout = setTimeout(() => {
     const rate = getEffectiveRate();
     const activeMode = document.querySelector('.mode-btn.active').dataset.mode;
+    const usdRate = parseFloat(usdRateInput.value) || 90;
+    const eurRate = parseFloat(eurRateInput.value) || 100;
 
     chrome.storage.sync.set({
       hourlyRate: rate,
@@ -93,6 +100,8 @@ function save() {
       mode: activeMode,
       salary: parseFloat(salaryInput.value) || null,
       hoursPerWeek: parseFloat(hoursPerWeekInput.value) || 40,
+      usdRate,
+      eurRate,
     });
 
     // Notify active tab
@@ -102,6 +111,8 @@ function save() {
           action: 'updateSettings',
           hourlyRate: rate,
           isActive: activeToggle.checked,
+          usdRate,
+          eurRate,
         }).catch(() => {});
       }
     });
@@ -118,13 +129,3 @@ function showToast() {
 hourlyRateInput.addEventListener('input', save);
 activeToggle.addEventListener('change', save);
 
-// --- Listen for stats from content script ---
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === 'stats') {
-    pricesFound.textContent = msg.count || '—';
-    maxPrice.textContent = msg.max ? msg.max.toFixed(1) : '—';
-    chrome.storage.sync.set({
-      stats: { count: msg.count, max: msg.max },
-    });
-  }
-});
